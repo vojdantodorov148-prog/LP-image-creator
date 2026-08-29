@@ -1,54 +1,92 @@
-# Advertorial Image Generator
+# Advertorial Image Generator V2
 
-Netlify-ready app for turning a finished advertorial/listicle screenshot without images into a complete image plan.
+A static Netlify app for turning a full-page advertorial/listicle screenshot into an image audit and production plan.
 
-## Workflow
+## V2 workflow
 
-- Drag & drop, upload, or paste one full-page screenshot.
-- The browser automatically splits very long screenshots into readable vertical segments for AI analysis while keeping the original page intact in the UI.
-- KIE temporary file upload stores the analysis segments.
-- Gemini 3.7 Flash reads the copy/layout and returns image placements.
-- Each placement includes:
-  - marker position on the full screenshot
-  - Google Images search phrase
-  - direct "Search Google" button
-  - detailed generation prompt
-  - recommended aspect ratio
-  - editable vertical position
-- GPT Image 2 generates a selected image.
-- Generated images can be copied, downloaded, or regenerated.
-- Manual image slots can be added when AI misses something.
+1. Upload, drag/drop, or paste a full-page screenshot.
+2. Choose an image audit mode:
+   - **Smart audit** — evaluate existing images and decide Keep / Replace, while also finding empty and missing high-value visuals.
+   - **Empty only** — ignore existing images and return only empty/missing image opportunities.
+   - **Replace existing** — return existing content images only, all as Replace.
+   - **Force replace all** — every existing content image becomes Replace; empty/new opportunities can still be Added.
+3. The browser automatically slices long screenshots into overlapping vertical segments.
+4. Each segment is uploaded and analyzed separately with Gemini 3.7 Flash through KIE. This prevents one giant synchronous screenshot-analysis request from causing the entire scan to fail with HTTP 504.
+5. A lightweight text-only final pass merges/deduplicates segment findings. If that final pass times out, the app falls back to the already-completed segmented audit instead of discarding the results.
+6. Each image slot includes:
+   - Keep / Replace / Add / Needs review
+   - priority and confidence
+   - image goal/type
+   - section/location and editable position
+   - reason for the recommendation
+   - thumbnail crop of an existing image when available
+   - Google Images search phrase
+   - full AI-generation prompt
+   - recommended aspect ratio
+7. Generate one image or select several and use **Generate selected** with GPT Image 2.
+8. Copy/download generated images; export prompts, searches, or the full plan as CSV.
+9. Save projects and reopen them later from **Saved Projects**. V2 stores project history in IndexedDB in the current browser, including the screenshot, audit, prompts and cached generated images.
 
-## Models
+## API / security
 
-- Analysis: Gemini 3.7 Flash via KIE (`/gemini-3-7-flash-openai/v1/chat/completions`)
-- Image generation: GPT Image 2 via KIE (`gpt-image-2-text-to-image`)
+The KIE API key is server-side only through Netlify Functions.
 
-## Netlify setup
+Required Netlify environment variable:
 
-The frontend is plain HTML/CSS/JS and requires no npm build.
+```text
+KIE_API_KEY=your_key_here
+```
 
-Set this environment variable in Netlify:
+Never put the real key in `public/app.js`, GitHub, or `.env.example`.
 
-`KIE_API_KEY=your_kie_api_key`
+## Netlify deployment
 
-The KIE key is only read inside Netlify Functions; it is not exposed in frontend code.
+This project requires Netlify Functions, so deploy it through a Git repository connected to Netlify rather than a static drag/drop deploy.
 
-### Recommended deployment
+Repository root must contain:
 
-Use a Git repository connected to Netlify so Netlify deploys both the static frontend and the `netlify/functions` folder. The included `netlify.toml` already sets the publish folder and API redirect.
+```text
+public/
+netlify/
+netlify.toml
+README.md
+.env.example
+```
 
-If you only use Netlify's simple drag-and-drop static deploy, serverless Functions may not be deployed with the frontend. In that case, connect the folder/repository to Netlify instead.
+Netlify configuration is already included:
 
-## Files
+```toml
+[build]
+  publish = "public"
+  functions = "netlify/functions"
 
-- `public/index.html` — app entry
-- `public/styles.css` — UI
-- `public/app.js` — frontend logic
-- `netlify/functions/upload-screenshot.mjs` — uploads one compressed screenshot segment to temporary KIE storage
-- `netlify/functions/analyze-advertorial.mjs` — Gemini analysis of the uploaded segment URLs
-- `netlify/functions/generate-image.mjs` — starts GPT Image 2 job
-- `netlify/functions/task-status.mjs` — polls KIE generation state
-- `netlify/functions/proxy-image.mjs` — secure copy/download proxy
-- `netlify/functions/_shared.mjs` — shared KIE helpers
-- `netlify.toml` — Netlify config
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+```
+
+After importing the repo in Netlify:
+
+1. Add `KIE_API_KEY` under **Project configuration → Environment variables**.
+2. Trigger a new production deploy.
+3. Open the site and upload one full-page screenshot.
+4. Start with **Smart audit + Balanced + Medium**.
+
+## Netlify Functions
+
+- `upload-screenshot.mjs` — temporary screenshot-segment upload to KIE storage
+- `analyze-segment.mjs` — short multimodal audit of one screenshot segment
+- `finalize-analysis.mjs` — text-only merge/deduplication/final audit pass
+- `regenerate-prompts.mjs` — rewrite all search phrases and generation prompts
+- `generate-image.mjs` — create a GPT Image 2 generation task
+- `task-status.mjs` — poll image-generation status
+- `proxy-image.mjs` — validated image download/copy proxy
+- `analyze-advertorial.mjs` — legacy V1 endpoint retained for compatibility; V2 frontend does not use it
+
+## Saved Projects note
+
+Saved Projects are intentionally local to the browser in this build, so V2 does not require a Supabase project just to work. If cross-device/team sync is needed later, the IndexedDB persistence layer can be swapped for Supabase without changing the image-analysis workflow.
