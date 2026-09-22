@@ -1,0 +1,9 @@
+{
+  "name": "advertorial-image-generator",
+  "private": true,
+  "version": "2.1.0",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.0"
+  }
+}
